@@ -1,0 +1,75 @@
+name: Action CI
+
+on:
+  workflow_call:
+
+jobs:
+
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    outputs:
+      latest_local_sha: ${{ steps.output-sha.outputs.latest_local_sha }}
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+
+      - name: Install PHP
+        uses: shivammathur/setup-php@1a18b2267f80291a81ca1d33e7c851fe09e7dfc4 # v2.22.0
+        with:
+          php-version: 8.1
+          extensions: yaml
+          tools: composer:v2
+
+      - name: Run CI
+        run: |
+          if [[ -f composer.json ]]; then
+            composer install --prefer-dist --no-progress --no-suggest --no-interaction --no-scripts --no-plugins
+          fi
+          if [[ -f phpunit.xml ]] || [[ -f phpunit.xml.dist ]]; then
+            if [[ -f vendor/bin/phpunit ]]; then
+              vendor/bin/phpunit
+            else
+              wget https://phar.phpunit.de/phpunit-9.6.phar
+              php phpunit-9.6.phar --verbose --colors=always
+            fi
+          else
+            echo "No phpunit tests found"
+          fi
+      
+      - name: Output latest SHA
+        id: output-sha
+        run: |
+          LATEST_LOCAL_SHA=$(git rev-parse HEAD)
+          echo "LATEST_LOCAL_SHA is $LATEST_LOCAL_SHA"
+          echo "latest_local_sha=$LATEST_LOCAL_SHA" >> $GITHUB_OUTPUT
+
+  gaugerelease:
+    name: Check unreleased changes
+    runs-on: ubuntu-latest
+    needs: ci
+    if: ${{ github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      do_release: ${{ steps.gauge-release.outputs.do_release }}
+      next_tag: ${{ steps.gauge-release.outputs.next_tag }}
+    steps:
+      - name: Gauge release
+        id: gauge-release
+        uses: silverstripe/gha-gauge-release@v1
+        with:
+          latest_local_sha: ${{ needs.ci.outputs.latest_local_sha }}
+
+  patchrelease:
+    name: Patch release
+    runs-on: ubuntu-latest
+    needs: gaugerelease
+    if: ${{ needs.gaugerelease.outputs.do_release == '1' }}
+    steps:
+      - name: Patch release
+        uses: silverstripe/gha-tag-release@v1
+        with:
+          tag: ${{ needs.gaugerelease.outputs.next_tag }}
+          delete_existing: false
+          release: true
+          release_auto_notes: true
