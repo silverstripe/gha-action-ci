@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       latest_local_sha: ${{ steps.output-sha.outputs.latest_local_sha }}
+      has_auto_tag: ${{ steps.output-has-auto-tag.outputs.has_auto_tag }}
+      branch: ${{ steps.output-branch.outputs.branch }}
     steps:
 
       - name: Checkout code
@@ -45,6 +47,23 @@ jobs:
           echo "LATEST_LOCAL_SHA is $LATEST_LOCAL_SHA"
           echo "latest_local_sha=$LATEST_LOCAL_SHA" >> $GITHUB_OUTPUT
 
+      - name: Output has auto-tag
+        id: output-has-auto-tag
+        run: |
+          HAS_AUTO_TAG=0
+          if [[ -f .github/workflows/auto-tag.yml ]]; then
+            HAS_AUTO_TAG=1
+          fi
+          echo "HAS_AUTO_TAG is $HAS_AUTO_TAG"
+          echo "has_auto_tag=$HAS_AUTO_TAG" >> $GITHUB_OUTPUT
+
+      - name: Output branch
+        id: output-branch
+        run: |
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "BRANCH is $BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
   gaugerelease:
     name: Check unreleased changes
     runs-on: ubuntu-latest
@@ -73,3 +92,40 @@ jobs:
           delete_existing: false
           release: true
           release_auto_notes: true
+
+  # Trigger gha-auto-tag manually as any workflow triggered by the GitHub API will NOT trigger any new
+  # workflows e.g. auto-tag.yml as a measure to protect against infinite loops
+  # https://github.com/peter-evans/create-pull-request/issues/48#issuecomment-537478081
+  dispatchautotag:
+    name: Dispatch auto tag
+    runs-on: ubuntu-latest
+    needs: [ci, patchrelease]
+    if: ${{ needs.ci.outputs.has_auto_tag == '1' }}
+    env:
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      BRANCH: ${{ needs.ci.outputs.branch }}
+    steps:
+      - name: Dispatch auto tag
+        run: |
+          # https://docs.github.com/en/rest/actions/workflows?apiVersion=2022-11-28#create-a-workflow-dispatch-event
+          RESP_CODE=$(curl -w %{http_code} -s -L -o __response.json \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/auto-tag.yml/dispatches \
+            -d "{\"ref\":\"$BRANCH\"}"
+          )
+          if [[ $RESP_CODE != "204" ]]; then
+            echo "Failed to dispatch workflow - HTTP response code was $RESP_CODE"
+            cat __response.json
+            exit 1
+          fi
+
+      - name: Delete temporary files
+        shell: bash
+        if: always()
+        run: |
+          if [[ -f __response.json ]]; then
+            rm __response.json
+          fi
