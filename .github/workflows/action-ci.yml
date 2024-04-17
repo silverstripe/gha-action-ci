@@ -3,6 +3,8 @@ name: Action CI
 on:
   workflow_call:
 
+permissions: {}
+
 jobs:
 
   ci:
@@ -72,6 +74,8 @@ jobs:
     outputs:
       do_release: ${{ steps.gauge-release.outputs.do_release }}
       next_tag: ${{ steps.gauge-release.outputs.next_tag }}
+    permissions:
+      contents: read
     steps:
       - name: Gauge release
         id: gauge-release
@@ -84,6 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: gaugerelease
     if: ${{ needs.gaugerelease.outputs.do_release == '1' }}
+    permissions:
+      contents: write
     steps:
       - name: Patch release
         uses: silverstripe/gha-tag-release@v1
@@ -104,6 +110,8 @@ jobs:
     env:
       GITHUB_REPOSITORY: ${{ github.repository }}
       BRANCH: ${{ needs.ci.outputs.branch }}
+    permissions:
+      actions: write
     steps:
       - name: Dispatch auto tag
         run: |
