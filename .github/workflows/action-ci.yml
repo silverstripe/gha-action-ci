@@ -52,9 +52,9 @@ jobs:
       - name: Output has auto-tag
         id: output-has-auto-tag
         run: |
-          HAS_AUTO_TAG=0
+          HAS_AUTO_TAG="false"
           if [[ -f .github/workflows/auto-tag.yml ]]; then
-            HAS_AUTO_TAG=1
+            HAS_AUTO_TAG="true"
           fi
           echo "HAS_AUTO_TAG is $HAS_AUTO_TAG"
           echo "has_auto_tag=$HAS_AUTO_TAG" >> $GITHUB_OUTPUT
@@ -65,64 +65,29 @@ jobs:
           BRANCH=$(git rev-parse --abbrev-ref HEAD)
           echo "BRANCH is $BRANCH"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-
-  gaugerelease:
-    name: Check unreleased changes
+  
+  dispatchtagpatchrelase:
+    name: Dispatch tag patch release
     runs-on: ubuntu-latest
     needs: ci
     if: ${{ github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    outputs:
-      do_release: ${{ steps.gauge-release.outputs.do_release }}
-      next_tag: ${{ steps.gauge-release.outputs.next_tag }}
-    permissions:
-      contents: read
-    steps:
-      - name: Gauge release
-        id: gauge-release
-        uses: silverstripe/gha-gauge-release@v1
-        with:
-          latest_local_sha: ${{ needs.ci.outputs.latest_local_sha }}
-
-  patchrelease:
-    name: Patch release
-    runs-on: ubuntu-latest
-    needs: gaugerelease
-    if: ${{ needs.gaugerelease.outputs.do_release == '1' }}
-    permissions:
-      contents: write
-    steps:
-      - name: Patch release
-        uses: silverstripe/gha-tag-release@v1
-        with:
-          tag: ${{ needs.gaugerelease.outputs.next_tag }}
-          delete_existing: false
-          release: true
-          release_auto_notes: true
-
-  # Trigger gha-auto-tag manually as any workflow triggered by the GitHub API will NOT trigger any new
-  # workflows e.g. auto-tag.yml as a measure to protect against infinite loops
-  # https://github.com/peter-evans/create-pull-request/issues/48#issuecomment-537478081
-  dispatchautotag:
-    name: Dispatch auto tag
-    runs-on: ubuntu-latest
-    needs: [ci, patchrelease]
-    if: ${{ needs.ci.outputs.has_auto_tag == '1' }}
     env:
       GITHUB_REPOSITORY: ${{ github.repository }}
       BRANCH: ${{ needs.ci.outputs.branch }}
-    permissions:
-      actions: write
     steps:
-      - name: Dispatch auto tag
+
+      - name: Dispatch tag patch release
+        shell: bash
+        id: dispatch-tag-patch-release
         run: |
           # https://docs.github.com/en/rest/actions/workflows?apiVersion=2022-11-28#create-a-workflow-dispatch-event
           RESP_CODE=$(curl -w %{http_code} -s -L -o __response.json \
             -X POST \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Authorization: Bearer ${{ github.token }}"\
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/auto-tag.yml/dispatches \
-            -d "{\"ref\":\"$BRANCH\"}"
+            https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/tag-patch-release.yml/dispatches \
+            -d "{\"ref\":\"$BRANCH\",\"inputs\":{\"latest_local_sha\":\"${{ needs.ci.outputs.latest_local_sha }}\",\"dispatch_gha_autotag\":${{ needs.ci.outputs.has_auto_tag }}}}"
           )
           if [[ $RESP_CODE != "204" ]]; then
             echo "Failed to dispatch workflow - HTTP response code was $RESP_CODE"
