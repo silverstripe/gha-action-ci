@@ -71,6 +71,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: ci
     if: ${{ github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      actions: write
     env:
       GITHUB_REPOSITORY: ${{ github.repository }}
       BRANCH: ${{ needs.ci.outputs.branch }}
@@ -87,7 +89,7 @@ jobs:
             -H "Authorization: Bearer ${{ github.token }}"\
             -H "X-GitHub-Api-Version: 2022-11-28" \
             https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/tag-patch-release.yml/dispatches \
-            -d "{\"ref\":\"$BRANCH\",\"inputs\":{\"latest_local_sha\":\"${{ needs.ci.outputs.latest_local_sha }}\",\"dispatch_gha_autotag\":${{ needs.ci.outputs.has_auto_tag }}}}"
+            -d "{\"ref\":\"$BRANCH\",\"inputs\":{\"latest_local_sha\":\"${{ needs.ci.outputs.latest_local_sha }}\"}}"
           )
           if [[ $RESP_CODE != "204" ]]; then
             echo "Failed to dispatch workflow - HTTP response code was $RESP_CODE"
