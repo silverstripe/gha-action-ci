@@ -26,7 +26,7 @@ jobs:
           extensions: yaml
           tools: composer:v2
 
-      - name: Run CI
+      - name: Run phpunit
         run: |
           if [[ -f composer.json ]]; then
             composer install --prefer-dist --no-progress --no-suggest --no-interaction --no-scripts --no-plugins
@@ -41,7 +41,17 @@ jobs:
           else
             echo "No phpunit tests found"
           fi
-      
+
+      - name: Run bats
+        run: |
+          if ls tests/*.bats >/dev/null 2>&1; then
+            # bats-core is published to npm as `bats`, and node comes preinstalled on the runner
+            npm install -g bats@1.11.1
+            bats tests
+          else
+            echo "No bats tests found"
+          fi
+
       - name: Output latest SHA
         id: output-sha
         run: |
