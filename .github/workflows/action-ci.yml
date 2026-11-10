@@ -41,7 +41,16 @@ jobs:
           else
             echo "No phpunit tests found"
           fi
-      
+
+      - name: Run bats tests
+        run: |
+          if ls tests/*.bats > /dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y bats
+            bats tests
+          else
+            echo "No bats tests found"
+          fi
+
       - name: Output latest SHA
         id: output-sha
         run: |

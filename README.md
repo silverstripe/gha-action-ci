@@ -2,7 +2,7 @@
 
 CI that is specifically for silverstripe/gha-* repositories
 
-Will run phpunit if applicable and make automatic patch releases
+Will run phpunit and [bats](https://github.com/bats-core/bats-core) tests (`tests/*.bats`) if applicable, and make automatic patch releases
 
 Because gha-* modules do not integrate with other dependencies, there's no need to run this CI on a cron
 
